@@ -2,7 +2,7 @@ import {engine,Transform,UiInput,PlayerIdentityData,} from '@dcl/sdk/ecs'
 import { Color4 } from '@dcl/sdk/math'
 import ReactEcs, { Button, Label, ReactEcsRenderer, UiEntity } from '@dcl/sdk/react-ecs'
 import { playerManager } from './index'
-import { Player, PlayerManager, moveSystem } from './systems'
+import { Player, PlayerManager } from './systems'
 import { EntityPropTypes } from '@dcl/sdk/react-ecs'
 import  { getPlayer } from '@dcl/sdk/src/players'
 import { NpcUtilsUi } from 'dcl-npc-toolkit'
@@ -34,13 +34,13 @@ export function setupUi() {
 }
 
 
-export let handleButtonAction = (direction: string, isMouseDown: boolean) => {
+/* export let handleButtonAction = (direction: string, isMouseDown: boolean) => {
   const currentPlayerId = getPlayer()?.userId
   const currentPlayer = currentPlayerId ? playerManager.players.get(currentPlayerId) : undefined;
   if (isMouseDown && currentPlayerId) {
-    currentPlayer?.moveSystem.setDirection(direction); // Or whatever direction the player chose
+    //currentPlayer?.moveSystem.setDirection(direction); // Or whatever direction the player chose
   } else {
-    moveSystem.setDirection('stop');
+    //moveSystem.setDirection('stop');
   }
 }
 
@@ -50,9 +50,9 @@ export function handleDestroyAction(isMouseDown: boolean) {
   if (isMouseDown && currentPlayerId && currentPlayer) {
     engine.removeEntity(currentPlayer.golf)
     
-    playerManager.removePlayer(currentPlayerId)
-    console.log(playerManager.players.size)
-    hideControls() 
+    //playerManager.removePlayer(currentPlayerId)
+    //console.log(playerManager.players.size)
+    //hideControls() 
   } 
 }
 
@@ -156,4 +156,4 @@ export function renderUiComponent(controlsVisible: boolean) {
   
 }
   
-  
+   */
