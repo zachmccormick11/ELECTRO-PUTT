@@ -33,11 +33,13 @@ import { ReactEcsRenderer } from '@dcl/sdk/react-ecs'
 import { Cube } from './components'
 import { getPlayerData } from '~system/Players'
 
-let playerScore = 0;
+let ballangle = 0;
 let playerBallCountDisplay = 10;
 let swingButtonPushed = false; // Set this to true when the swing button is pushed
 let rotationVariable = 0; // Replace with your rotation variable
 let ballCount = 10;
+
+
 
 export let skeeball1PowerBar = engine.addEntity()
 GltfContainer.create(skeeball1PowerBar, { src: 'models/skeeball1powerbar.glb' })
@@ -75,7 +77,6 @@ Transform.create(skeeball4PowerBar, {
 })  
 
 
-
 export class Player {
   public playerId: string;
   
@@ -103,8 +104,6 @@ export class Player {
     this.playing = false;
     this.machineIndex = index;
   } 
-
-
 }
 
 export class PlayerManager {
@@ -121,24 +120,17 @@ export class PlayerManager {
   addPlayer(playerId: string, machinePos: Vector3, index: number) {
     const player = new Player(playerId, machinePos, index);
     this.players.set(playerId, player);
-    
-    console.log('player added')
   }
 
 
   isPlaying(playerId: string): boolean {
     const player = this.players.get(playerId);
     if (player) {
-      // Assuming the Player class has an 'isPlaying' property
       return player.playing;
     }
     return false;
   }
 }
-
-
-
-
 
 
 export function createBall( machineStartingPosition: Vector3, player: Player) {
@@ -149,9 +141,6 @@ export function createBall( machineStartingPosition: Vector3, player: Player) {
   let ballposition = machineStartingPosition
   Transform.create(ball, {position: {x: ballposition.x, y: ballposition.y+0.2, z: ballposition.z}, scale: scale, rotation: Quaternion.fromEulerDegrees(0, 0, 0)})
   MeshCollider.setSphere(ball,[BALL_LAYER,ColliderLayer.CL_POINTER,ColliderLayer.CL_PHYSICS])
- 
-  
-
   player.ball = ball;
 
   pointerEventsSystem.onPointerDown(
@@ -163,13 +152,9 @@ export function createBall( machineStartingPosition: Vector3, player: Player) {
       }
     },
     function () { 
-      console.log("clicked ball")
-      
       swingButtonPushed = true;
-      
     }
       )
-
    //if collides with score area
   utils.triggers.addTrigger(
     ball,
@@ -177,15 +162,73 @@ export function createBall( machineStartingPosition: Vector3, player: Player) {
     SCORE_LAYER | LOSE_LAYER,
     [{ type: 'sphere', radius: 0.2}],
     function (otherEntity) {
-      //set
-      console.log('ball collided with score area')
       player.hasLanded = true;
-      
+      engine.removeEntity(scorebonus);
       engine.removeEntity(ball) 
     }
   ) 
   
+let machine = skeeGolfMachines[player.machineIndex];
+const positions = [
+  { x: machine.startingPosition.x, y: 6.118, z: machine.startingPosition.z+14.267 },//score4
+  { x: machine.startingPosition.x-4.033, y: 6.764, z: machine.startingPosition.z+13.241 },//score1
+  { x: machine.startingPosition.x-2.633, y: 5.055, z: machine.startingPosition.z+11.229 },//score2
+  { x: machine.startingPosition.x-1.335, y: 4.012, z: machine.startingPosition.z+13.586 },//score3
+  { x: machine.startingPosition.x, y: 4.417, z: machine.startingPosition.z+13.057 },//score5
+  { x: machine.startingPosition.x, y: 4.417, z: machine.startingPosition.z+11.157 },//score6
+  { x: machine.startingPosition.x+1.339, y: 4.012, z: machine.startingPosition.z+13.575 },//score7
+  { x: machine.startingPosition.x+2.606, y: 5.055, z: machine.startingPosition.z+11.196 },//score8
+  { x: machine.startingPosition.x+4.027, y: 6.764, z: machine.startingPosition.z+13.198 },//score9
+];
+  let position = positions[Math.floor(Math.random() * positions.length)];
+  const scorebonus = engine.addEntity();
+  GltfContainer.create(scorebonus, { src: 'models/scorebonus.glb' });
+  
+    const scoreAmount = 10
+    Transform.create(scorebonus).position = position;
+    Transform.getMutable(scorebonus).scale = { x: 0.4, y: 0.4, z: 0.4 };
+    
+    MeshCollider.setSphere(scorebonus,SCORE_LAYER);
+    
+    AudioSource.create(scorebonus, {
+      audioClipUrl: 'sounds/ballscore.wav',
+      loop: false,
+      playing: false,
+      volume: 1,
+    })
 
+     utils.triggers.addTrigger(
+      scorebonus,
+      SCORE_LAYER,
+      BALL_LAYER,
+      [{ type: 'sphere', radius: 0.6 }],
+      function (otherEntity) {
+        AudioSource.playSound(scorebonus,'sounds/ballscore.wav',true);
+        const text = engine.addEntity()
+        Transform.create(text).position = Vector3.create(position.x, position.y+1.5, position.z);
+        let startPos = Vector3.create(position.x, position.y+1.5, position.z);
+        let endPos = Vector3.create(position.x, position.y+2, position.z);
+        utils.tweens.startTranslation(text, startPos, endPos, 0.8)
+        
+        utils.timers.setTimeout(function () {
+          engine.removeEntity(text);
+          
+        }, 800)
+
+        const player = getPlayer()?.userId.toString()
+        if (player){
+          playerManager.players.get(player)!.combo += 1;
+          playerManager.players.get(player)!.score += scoreAmount*playerManager.players.get(player)!.combo;
+          TextShape.create(text, {
+            text: "+" + scoreAmount.toString()+ "\n" + "Combo x" + playerManager.players.get(player)!.combo.toString(),
+            textColor: { r: 1, g: 0, b: 1, a: 1 },
+            outlineColor: { r: 1, g: 0, b: 1 },
+            outlineWidth: 0.25,
+            fontSize: 10,
+          })
+        }
+      }
+    )
   return ball  
 }
  
@@ -235,21 +278,16 @@ class MoveAction implements utils.actions.IAction {
   }
 
   onStart(): void {
-    
-    console.log('move action started');
+
     if (this.ball) {
-      console.log('yep, theres a ball') 
       const machine = skeeGolfMachines[this.player.machineIndex];
-      console.log('machine', machine)
       this.heightdelta = utils.remap(this.power, 0, 100, 0.3, 0.9)
-      
-    }else{
-      console.log('no ball')
+    }
+    else{
     }
   }
 
   update(dt: number): void {
-    
     const ballTransform = this.ball ? Transform.getMutable(this.ball) : null;
     const golferTransform = this.golferEntity ? Transform.getMutable(this.golferEntity) : null;
     const ballPosition = ballTransform?.position;
@@ -259,18 +297,14 @@ class MoveAction implements utils.actions.IAction {
     const forwardDirection = Vector3.create(Math.sin((ballRotation)), 0, (Math.cos(ballRotation)));
     const speed = this.power*0.004; // Set your speed value
     
-    
-    
     switch (this.direction) { 
         case 'forward': 
-        
         let LT = this.skeeGolfMachines[this.player.machineIndex].LT
         let RT = this.skeeGolfMachines[this.player.machineIndex].RT
         let LB = this.skeeGolfMachines[this.player.machineIndex].LB
         let RB = this.skeeGolfMachines[this.player.machineIndex].RB
         
         if (ballTransform) {
-
           if ( ballTransform.position.z <= LT.z ){
           ballTransform.position.x += forwardDirection.x * speed;
           ballTransform.position.z += forwardDirection.z * speed; 
@@ -282,11 +316,8 @@ class MoveAction implements utils.actions.IAction {
           ballTransform.position.x <= RB.x && 
           ballTransform.position.z >= LB.z &&
           ballTransform.position.z <= LT.z 
-          
-          
           ) {
             this.power -=0.05
-          //console.log('ball is on the ramp');   
           const ballRadius = 0.13; // Replace with the actual radius of the ball
           // Calculate the vertical and horizontal distances from the ball to the top of the ramp
           const verticalDistance = LT.y + ballRadius - ballTransform.position.y;
@@ -313,68 +344,48 @@ class MoveAction implements utils.actions.IAction {
           // Update the y-coordinate of the ball's position based on the slope of the ramp and the rotation offset
           ballTransform.position.y += (newSlope) * speed; 
         }   
-
-
+        
         //ball now performs arc at end of ramp
         if ( ballTransform.position.z >= LT.z ){
-
               ballTransform.position.x += forwardDirection.x *  Math.min(Math.max(speed*0.6, 0.15), 0.23)
               ballTransform.position.z += forwardDirection.z * Math.min(Math.max(speed*0.6, 0.15), 0.23)
               this.heightdelta -= 0.035
-           
-          
-      
-          
             // calculate the new y position
             ballTransform.position.y += this.heightdelta
           
           }
-
-
-
-
-
         }
         
-      
         break;
       case 'rotate':
         //rotate the ball based on the angle between the ball and the current player position
         if (ballTransform) {
           let playerPos = this.player.position;
-          
           let angle = Math.atan2(playerPos!.x - ballTransform.position.x, playerPos!.z - ballTransform.position.z) - Math.PI;
           
-          ballTransform.rotation = { x: 0, y: angle, z: 0, w: 0 };
-          
-
-          
-          let rightDirection = Vector3.create(Math.sin(270-angle-70.2)*0.51, 0, -Math.cos(270-angle-70.2)*0.5);
-
-          
-
+          if ((angle >= -0.37 && angle <= 0) || (angle >= -6.5 && angle <= -5.88)) {
+            ballangle = angle
+            
+          }
+          console.log(angle)
+        ballTransform.rotation = { x: 0, y: ballangle, z: 0, w: 0 };
+        let rightDirection = Vector3.create(Math.sin(270-ballangle-70.2)*0.51, 0, -Math.cos(270-ballangle-70.2)*0.5);
           // Calculate the golfer's position
           let golferPos = Vector3.create(this.player.machinePos.x+rightDirection.x,this.player.machinePos.y+rightDirection.y,this.player.machinePos.z+rightDirection.z)
           
           if(this.golferEntity){
-            
             let golferTransform = Transform.getMutable(this.golferEntity);
-            golferTransform.position = golferPos;
+            golferTransform.position = golferPos; 
             
-
             // Calculate the angle for the golfer to face the ball
             let golferAngle = Math.atan2(ballTransform.position.x - golferPos.x, ballTransform.position.z - golferPos.z) - Math.PI;
             golferTransform.rotation = { x: 0, y: golferAngle, z: 0, w: 0 };
           } else {
-            console.log('Golfer entity does not exist');
           }
-        
-          
+        }else{
+
         } 
       
-
-
-
         break;
       case 'right': 
         
@@ -410,16 +421,12 @@ class MoveAction implements utils.actions.IAction {
  
 // When the player starts the golf game...
 function startGolfGame(chooseMachineAction: ChooseMachineAction, index: number, playerId: string) {
-
-  console.log("index"+index)
   
     let player = playerId
     if (player && !playerManager.players.has(player)) {
-      console.log('UserId : ', player)
       
       let machinePos = chooseMachineAction.machines[index].startingPosition;
       playerManager.addPlayer(player, machinePos,index);
-      console.log(playerManager.players.size)
       let currentPlayer = playerManager.players.get(player);
       if (currentPlayer) {
         playerManager.players.get(player)!.machineIndex = index;
@@ -427,26 +434,20 @@ function startGolfGame(chooseMachineAction: ChooseMachineAction, index: number, 
         currentPlayer.machineIndex = index;
         
         currentPlayer.playing = true;
-        console.log('player playing', currentPlayer.playing)
         if (!playerDisplays.has(currentPlayer.playerId+'0')) {
           createPlayerDisplay(player,chooseMachineAction,index)
           updatePlayerDisplay(player,"0 \n\n0" ,currentPlayer.highscore.toString(),currentPlayer.score.toString())
-          console.log('display should update')
           }
       }
     } else {
       if(player){
-      console.log('player already exists')
-      //set player playing to true
       let machinePos = chooseMachineAction.machines[index].startingPosition;
-      console.log(playerManager.players.size)
       let currentPlayer = playerManager.players.get(player);
       if (currentPlayer) {
         playerManager.players.get(player)!.machineIndex = index;
         playerManager.players.get(player)!.machinePos = machinePos
         currentPlayer.machineIndex = index;
         currentPlayer.playing = true;
-        console.log('player playing', currentPlayer.playing)
         if (!playerDisplays.has(currentPlayer.playerId+'0')) {
           createPlayerDisplay(player,chooseMachineAction,index)
           updatePlayerDisplay(player,"0 \n\n0" ,currentPlayer.highscore.toString(),currentPlayer.score.toString())
@@ -457,18 +458,10 @@ function startGolfGame(chooseMachineAction: ChooseMachineAction, index: number, 
     }
     }
   
-  //create ball count starting at 10
-  //ballCount = 10;
-  console.log('ball count', ballCount) 
-  let machineindex = chooseMachineAction.machines[index]; 
-  console.log('machine index', machineindex)
+  let machineindex = chooseMachineAction.machines[index];
   let machineStartingPosition = machineindex.startingPosition;
 
-  console.log('machine starting position', machineStartingPosition)
-
-
-
-  // Create the golfer entity and add the GLB model to it
+  // Create the golfer
   let golferEntity = engine.addEntity() 
   let scale = Vector3.create(0.5, 0.5, 0.5)
   GltfContainer.create(golferEntity, { src: 'models/golfer.glb' });
@@ -504,7 +497,7 @@ function startGolfGame(chooseMachineAction: ChooseMachineAction, index: number, 
                             audioClipUrl: 'sounds/playing.mp3',
                             loop: true,
                             playing: true,
-                            volume: 0.5,
+                            volume: 0.6,
                           })
                           
                         
@@ -516,9 +509,8 @@ function startGolfGame(chooseMachineAction: ChooseMachineAction, index: number, 
     Transform.create(playingsound, {position: {x: golferPosition.x-0.5, y: golferPosition.y+0, z: golferPosition.z}, scale: scale, rotation: Quaternion.fromEulerDegrees(0, 180, 0)})
     
     Transform.create(golferEntity, {position: {x: golferPosition.x-0.5, y: golferPosition.y+0, z: golferPosition.z}, scale: scale, rotation: Quaternion.fromEulerDegrees(0, 180, 0)})
-    console.log('golfertransform was created')
   }
-  //save
+  
   const builder = new utils.actions.SequenceBuilder()
   for (let i = 0; i < ballCount; i++) {
     let turn = i
@@ -529,8 +521,6 @@ function startGolfGame(chooseMachineAction: ChooseMachineAction, index: number, 
     
     let newBall = new CreateBallAction(machineStartingPosition, playerManager.players.get(playerId)!,turn, totalballs);
     if (player) {
-      //let swingAction = new SwingAction(powerCycleAction.power, rotationVariable,player);
-      //console.log('swing action created', swingAction)
       
       builder
       .then(newBall)
@@ -546,7 +536,6 @@ function startGolfGame(chooseMachineAction: ChooseMachineAction, index: number, 
       .else()
       .endIf();
     }
-    console.log('builder', builder)
 }     
 
   const swing = new utils.actions.SequenceRunner(engine, builder, () => {
@@ -562,19 +551,8 @@ function startGolfGame(chooseMachineAction: ChooseMachineAction, index: number, 
 }
 
 
-// When the player stops the golf game...
-function stopGolfGame() {
-  // Logic to stop the golf game
-}
-
-
-
 //================================================================================================
 //================================================================================================
-
- 
-
-
 
 interface SkeeGolfMachine {
   id: string;
@@ -590,10 +568,9 @@ interface SkeeGolfMachine {
   powerbar: Entity;
 }
 
-// create an array to hold all your machines
+// create an array to hold all machines
 let skeeGolfMachines: SkeeGolfMachine[] = [];
 
-  
   skeeGolfMachines.push({
     id: 'machine1',
     startingPosition: { x: 8, y: 0.2, z: 15 },
@@ -603,7 +580,7 @@ let skeeGolfMachines: SkeeGolfMachine[] = [];
     RT: { x: 8+2.7, y: 0.15+1.142, z: 15+6.209+0.15 },
     deltaY: 1.142 - 0.221,
     deltaZ: 6.438 - 2.134,
-    rampLength: 0 , // calculate ramp length
+    rampLength: 0 ,
     rampSlope: 0,
     powerbar: skeeball1PowerBar 
   });
@@ -619,12 +596,10 @@ skeeGolfMachines.push({
   RT: { x: 56+2.7, y: 0.15+1.142, z: 15+6.209+0.15 },
   deltaY: 1.142 - 0.221,
   deltaZ: 6.438 - 2.134,
-  rampLength: 0 , // calculate ramp length
+  rampLength: 0 ,
   rampSlope: 0,
   powerbar: skeeball2PowerBar
 });
-
-
 
 skeeGolfMachines.push({
   id: 'machine3',
@@ -635,12 +610,10 @@ skeeGolfMachines.push({
   RT: { x: 22+2.7, y: 0.15+1.142, z: 45+6.209+0.15 }, 
   deltaY: 1.142 - 0.221,
   deltaZ: 6.438 - 2.134,
-  rampLength: 0 , // calculate ramp length
+  rampLength: 0 ,
   rampSlope: 0,
   powerbar: skeeball3PowerBar
 });
-
-
 
 skeeGolfMachines.push({
   id: 'machine4',
@@ -651,15 +624,10 @@ skeeGolfMachines.push({
   RT: { x: 42+2.7, y: 0.15+1.142, z: 45+6.209+0.15 }, 
   deltaY: 1.142 - 0.221,
   deltaZ: 6.438 - 2.134,
-  rampLength: 0 , // calculate ramp length
+  rampLength: 0 ,
   rampSlope: 0,
   powerbar: skeeball4PowerBar
 });
-
-
-
-
-
 
 // calculate rampLength and rampSlope for each machine
 skeeGolfMachines = skeeGolfMachines.map(machine => {
@@ -678,7 +646,6 @@ skeeGolfMachines = skeeGolfMachines.map(machine => {
   };
 });
 
-
 class ChooseMachineAction implements utils.actions.IAction {
   hasFinished: boolean = false;
   machines: SkeeGolfMachine[];
@@ -686,14 +653,10 @@ class ChooseMachineAction implements utils.actions.IAction {
   constructor(machines: SkeeGolfMachine[]) {
     this.machines = machines;
   }
-
   onStart(): void {
-    // Logic to choose a machine
     this.hasFinished = true;
   }
-
   update(dt: number): void {}
-
   onFinish(): void {}
 }
 
@@ -712,7 +675,6 @@ class PowerCycleAction implements utils.actions.IAction {
 
   onStart(): void {
     this.hasFinished = false;
-   
     this.moveAction = new MoveAction('rotate', this.player, skeeGolfMachines, this.golferEntity);
     
   }
@@ -722,7 +684,6 @@ class PowerCycleAction implements utils.actions.IAction {
   const currentPlayerPos = getPlayer()?.position;
     if (currentPlayerPos) {
       this.player.position = currentPlayerPos;
-      
       this.moveAction?.update(dt);
     }
    
@@ -730,7 +691,6 @@ class PowerCycleAction implements utils.actions.IAction {
     if (this.increasing) {
       this.power += dt * 100;
       this.player.power = this.power;
-      
       Transform.getMutable(skeeGolfMachines[this.player.machineIndex].powerbar).scale.y = this.power / 100; // Update power bar scale
       
       if (this.power >= 100) {
@@ -740,7 +700,6 @@ class PowerCycleAction implements utils.actions.IAction {
     } else {
       this.power -= dt * 100;
       this.player.power = this.power;
-      
       Transform.getMutable(skeeGolfMachines[this.player.machineIndex].powerbar).scale.y = this.power / 100; // Update power bar scale
       
       if (this.power <= 20) {
@@ -750,14 +709,8 @@ class PowerCycleAction implements utils.actions.IAction {
     }
 
     if(this.player.hasLanded){
-      
-      
-      
-
       this.hasFinished = true;
     }
-    
-
   }
 
   onFinish(): void {
@@ -785,14 +738,9 @@ class BallInMotionAction implements utils.actions.IAction {
 
   onStart(): void {
     this.hasFinished = false;
-    
-    console.log('ball in motion has started');
     this.moveAction = new MoveAction('forward', this.player, skeeGolfMachines, this.golferEntity);
     this.moveAction.onStart();
-    console.log('new ball in motion moveaction created')
 
-
-    
     const watchAnim = Animator.getClip(this.golferEntity,'watch')
     watchAnim.playing = true
     
@@ -813,9 +761,6 @@ class BallInMotionAction implements utils.actions.IAction {
   onFinish(): void {
     this.moveAction = new MoveAction('stop', this.player, skeeGolfMachines, this.golferEntity);
     this.moveAction = undefined;
-    
-    
-    console.log('ball in motion has finished')
     this.player.hasLanded = false;
     
     swingButtonPushed = false;
@@ -838,9 +783,7 @@ class SwingAction implements utils.actions.IAction {
 
   onStart(): void {
     this.hasFinished = false;
-    //Animator.playSingleAnimation(this.golferEntity, 'swing');
     const swingAnim = Animator.getClip(this.golferEntity, 'swing')
-    //const idleAnim = Animator.getClip(this.golferEntity,'idle')
     swingAnim.playing = true
     
 
@@ -855,7 +798,6 @@ class SwingAction implements utils.actions.IAction {
     }
 
     utils.timers.setTimeout(() => {
-      console.log('1 second passed')
       finish()
     }, 500)
 
@@ -879,9 +821,9 @@ class SwingAction implements utils.actions.IAction {
 const SCORE_LAYER = utils.LAYER_7
 export const LOSE_LAYER = utils.LAYER_8
 export const BALL_LAYER = utils.LAYER_6 
-// Assuming `skeeGolfMachines` is an array of `SkeeGolfMachine`
+
 skeeGolfMachines.forEach(machine => {
-  // Create a box with disabled collision
+  
   const positions = [
     { x: machine.startingPosition.x, y: 6.118, z: machine.startingPosition.z+14.267 },//score4
     { x: machine.startingPosition.x-4.033, y: 6.764, z: machine.startingPosition.z+13.241 },//score1
@@ -897,44 +839,44 @@ skeeGolfMachines.forEach(machine => {
 
   const colliderpositions = [
     { 
-      position: { x: machine.startingPosition.x-5.664, y: 7.773, z: machine.startingPosition.z+12.64 }, // Position
-      scale: { x: 0.2, y: 15.337, z: 5.981 } // Scale
+      position: { x: machine.startingPosition.x-5.664, y: 7.773, z: machine.startingPosition.z+12.64 },
+      scale: { x: 0.2, y: 15.337, z: 5.981 }
     },//collider1
     { 
-      position: { x: machine.startingPosition.x+5.664, y: 7.773, z: machine.startingPosition.z+12.64 }, // Position
-      scale: { x: 0.2, y: 15.337, z: 5.981 } // Scale
+      position: { x: machine.startingPosition.x+5.664, y: 7.773, z: machine.startingPosition.z+12.64 },
+      scale: { x: 0.2, y: 15.337, z: 5.981 }
     },//collider2
     { 
-      position: { x: machine.startingPosition.x, y: 9.166, z: machine.startingPosition.z+15.021 }, // Position
-      scale: { x: 11.064, y: 11.982, z: 0.194} // Scale
+      position: { x: machine.startingPosition.x, y: 9.166, z: machine.startingPosition.z+15.021 },
+      scale: { x: 11.064, y: 11.982, z: 0.194}
     },//collider3
     { 
-      position: { x: machine.startingPosition.x, y: 1.124, z: machine.startingPosition.z+12.945 }, // Position
-      scale: { x: 10.966, y: 2.137, z: 6.454 } // Scale
+      position: { x: machine.startingPosition.x, y: 1.124, z: machine.startingPosition.z+12.945 },
+      scale: { x: 10.966, y: 2.137, z: 6.454 }
     },//collider4
     { 
-      position: { x: machine.startingPosition.x, y: 2.407, z: machine.startingPosition.z+11.749}, // Position
-      scale: { x: 7.5, y: 0.429, z: 1.522 } // Scale
+      position: { x: machine.startingPosition.x, y: 2.407, z: machine.startingPosition.z+11.749},
+      scale: { x: 7.5, y: 0.429, z: 1.522 }
     },//collider5
     { 
-      position: { x: machine.startingPosition.x, y: 2.7, z: machine.startingPosition.z+13.64}, // Position
-      scale: { x: 7.5, y: 1.015, z: 2.307 } // Scale
+      position: { x: machine.startingPosition.x, y: 2.7, z: machine.startingPosition.z+13.64},
+      scale: { x: 7.5, y: 1.015, z: 2.307 }
     },//collider6
     { 
-      position: { x: machine.startingPosition.x-4.625, y: 2.818, z: machine.startingPosition.z+11.579}, // Position
-      scale: { x: 1.75, y: 1.25, z: 2.3 } // Scale
+      position: { x: machine.startingPosition.x-4.625, y: 2.818, z: machine.startingPosition.z+11.579},
+      scale: { x: 1.75, y: 1.25, z: 2.3 }
     },//collider7
     { 
-      position: { x: machine.startingPosition.x+4.625, y: 2.818, z: machine.startingPosition.z+11.579}, // Position
-      scale: { x: 1.75, y: 1.25, z: 2.3 } // Scale
+      position: { x: machine.startingPosition.x+4.625, y: 2.818, z: machine.startingPosition.z+11.579},
+      scale: { x: 1.75, y: 1.25, z: 2.3 }
     },//collider8
     { 
-      position: { x: machine.startingPosition.x-4.612, y: 3.249, z: machine.startingPosition.z+13.883}, // Position
-      scale: { x: 1.75, y: 2.113, z: 2.308 } // Scale 
+      position: { x: machine.startingPosition.x-4.612, y: 3.249, z: machine.startingPosition.z+13.883},
+      scale: { x: 1.75, y: 2.113, z: 2.308 }
     },//collider9
     { 
-      position: { x: machine.startingPosition.x+4.612, y: 3.249, z: machine.startingPosition.z+13.883}, // Position
-      scale: { x: 1.75, y: 2.113, z: 2.308 } // Scale
+      position: { x: machine.startingPosition.x+4.612, y: 3.249, z: machine.startingPosition.z+13.883},
+      scale: { x: 1.75, y: 2.113, z: 2.308 }
     },//collider10
 
 
@@ -947,9 +889,9 @@ skeeGolfMachines.forEach(machine => {
     const scoreAmount = Math.floor(position.y-2.7);
     Transform.create(score).position = position;
     Transform.getMutable(score).scale = { x: 0.5, y: 0.5, z: 0.5 };
-    //MeshRenderer.setSphere(score);
+    
     MeshCollider.setSphere(score,SCORE_LAYER);
-    // Create AudioSource component
+    
     AudioSource.create(score, {
       audioClipUrl: 'sounds/ballscore.wav',
       loop: false,
@@ -963,23 +905,19 @@ skeeGolfMachines.forEach(machine => {
       BALL_LAYER,
       [{ type: 'sphere', radius: 0.5 }],
       function (otherEntity) {
-        // Mouse was eaten by cat, "respawn" it
+        
         AudioSource.playSound(score,'sounds/ballscore.wav',true);
         const text = engine.addEntity()
         Transform.create(text).position = Vector3.create(position.x, position.y+1.5, position.z);
-        // Define start and end positions
+        
         let startPos = Vector3.create(position.x, position.y+1.5, position.z);
         let endPos = Vector3.create(position.x, position.y+2, position.z);
 
-        // Move a box
         utils.tweens.startTranslation(text, startPos, endPos, 0.8)
-
-
         utils.timers.setTimeout(function () {
           engine.removeEntity(text);
         }, 800)
-        //increment score
-        console.log('scored')
+
         const player = getPlayer()?.userId.toString()
         if (player){
           playerManager.players.get(player)!.combo += 1;
@@ -987,14 +925,11 @@ skeeGolfMachines.forEach(machine => {
           TextShape.create(text, {
             text: "+" + scoreAmount.toString()+ "\n" + "Combo x" + playerManager.players.get(player)!.combo.toString(),
             textColor: { r: 1, g: 0, b: 1, a: 1 },
-            outlineColor: { r: 1, g: 1, b: 1 },
-            outlineWidth: 0.1,
+            outlineColor: { r: 1, g: 0, b: 1 },
+            outlineWidth: 0.25,
             fontSize: 10,
           })
-  
-          console.log('score',playerManager.players.get(player)!.score)
         }
-        //ballCount += 1;
         
       }
     )
@@ -1009,7 +944,6 @@ skeeGolfMachines.forEach(machine => {
   })
 
 
-  //i need to have the machine chosen thing to change on the second go around and reset all game variables
   utils.triggers.addTrigger(  
     startbox,
     utils.NO_LAYERS,
@@ -1023,12 +957,9 @@ skeeGolfMachines.forEach(machine => {
         return;
       }
       let index = skeeGolfMachines.indexOf(machine);
-      console.log('index', index)
-      console.log(`triggered by ${otherEntity}!`);
-      let playerID = getPlayer()?.userId // Replace with the actual player ID
-      // Create a new ChooseMachineAction for the clicked machine
-      let chooseMachineAction = new ChooseMachineAction(skeeGolfMachines);  
-      console.log(chooseMachineAction.machines[index].startingPosition) 
+      let playerID = getPlayer()?.userId 
+      
+      let chooseMachineAction = new ChooseMachineAction(skeeGolfMachines);
       let skeeGolfMachine = skeeGolfMachines[index];
       if(playerID){ 
       startGolfGame(chooseMachineAction, index, playerID);
@@ -1046,10 +977,7 @@ skeeGolfMachines.forEach(machine => {
     const collider = engine.addEntity();
     Transform.create(collider).position = position.position;
     Transform.getMutable(collider).scale = position.scale;
-    
-    //MeshRenderer.setBox(collider);
     MeshCollider.setBox(collider,LOSE_LAYER);
-    console.log('collider created',Transform.getMutable(collider).scale,Transform.getMutable(collider).rotation,Transform.getMutable(collider).position)
     AudioSource.create(collider, {
       audioClipUrl: 'sounds/balldead.wav',
       loop: false,
@@ -1057,21 +985,16 @@ skeeGolfMachines.forEach(machine => {
       volume: 1,
     })
 
-
      utils.triggers.addTrigger( 
       collider,  
       LOSE_LAYER, 
       BALL_LAYER,
       [{ type: 'box', scale: position.scale }],
       function (otherEntity) {
-        AudioSource.playSound(collider,'sounds/balldead.wav',true);
-        
-        //increment score
-        console.log('ball lost')  
+        AudioSource.playSound(collider,'sounds/balldead.wav',true); 
         const player = getPlayer()?.userId.toString();
         if (player){
           playerManager.players.get(player)!.combo = 0;
-          console.log('combo lost',playerManager.players.get(player)!.combo)
         }
       }
     )  
@@ -1106,7 +1029,6 @@ class CreateBallAction implements utils.actions.IAction {
       
       updatePlayerDisplay(this.player.playerId,(this.player.score + "\n\n" +(this.totalballs-this.turn) ).toString(),this.player.highscore.toString(),this.player.score.toString())
       createBall(this.position, this.player); // Use machineStartingPosition in createBall function call
-      console.log(this.position)
     }
 
     this.hasFinished = true;
@@ -1129,7 +1051,7 @@ class EndGameAction implements utils.actions.IAction {
 
   onStart(): void {
     //prize criteria
-    if(this.player.score > 4){
+    if(this.player.score > 49){
       givePrize()
     }
 
@@ -1146,12 +1068,12 @@ class EndGameAction implements utils.actions.IAction {
           transform.position = { x: this.player.machinePos.x, y: 5, z: this.player.machinePos.z+5 }
           transform.rotation = Quaternion.fromEulerDegrees(0, 0, 0)
           transform.scale = { x: 1, y: 1, z: 1}
-        // Create a new UIText component for the text display
+        
         TextShape.create(quicktext, {
           text: "+BALL",
           textColor: { r: 1, g: 0, b: 1, a: 1 },
-          outlineColor: { r: 1, g: 1, b: 1 },
-          outlineWidth: 0.1,
+          outlineColor: { r: 1, g: 0, b: 1 },
+          outlineWidth: 0.25,
           fontSize: 6.5,
             
         })
@@ -1183,7 +1105,7 @@ class EndGameAction implements utils.actions.IAction {
       audioClipUrl: 'sounds/winner.wav',
       loop: false,
       playing: true,
-      volume: 0.7,
+      volume: 0.2,
     })
     utils.timers.setTimeout(function () {
       engine.removeEntity(winsound);
@@ -1325,7 +1247,6 @@ function updatePlayerDisplay(playerId: string, newText: string, newText1: string
   
   // Update the text of the first display
   if (machineDisplays0) {
-    console.log('updating display0')
     const machineDisplay0 = machineDisplays0
     Transform.getMutable(machineDisplay0).position.x = skeeGolfMachines[( playerManager.players.get(playerId)!).machineIndex].startingPosition.x -4.15
     Transform.getMutable(machineDisplay0).position.z = skeeGolfMachines[( playerManager.players.get(playerId)!).machineIndex].startingPosition.z +0.3
@@ -1335,7 +1256,6 @@ function updatePlayerDisplay(playerId: string, newText: string, newText1: string
 
   // Update the text of the second display
   if (machineDisplays1) {
-    console.log('updating display1')
     const machineDisplay1 = machineDisplays1
     Transform.getMutable(machineDisplay1).position.x = skeeGolfMachines[( playerManager.players.get(playerId)!).machineIndex].startingPosition.x -4.6
     Transform.getMutable(machineDisplay1).position.z = skeeGolfMachines[( playerManager.players.get(playerId)!).machineIndex].startingPosition.z +0.1
@@ -1345,7 +1265,6 @@ function updatePlayerDisplay(playerId: string, newText: string, newText1: string
     
   }
   if (machineDisplays2) {
-    console.log('updating display1')
     const machineDisplay2 = machineDisplays2
     Transform.getMutable(machineDisplay2).position.x = skeeGolfMachines[( playerManager.players.get(playerId)!).machineIndex].startingPosition.x +1
     Transform.getMutable(machineDisplay2).position.z = skeeGolfMachines[( playerManager.players.get(playerId)!).machineIndex].startingPosition.z +14.8
@@ -1354,8 +1273,7 @@ function updatePlayerDisplay(playerId: string, newText: string, newText1: string
 
     
   }
-  if (machineDisplays3) { 
-    console.log('updating display1')
+  if (machineDisplays3) {
     const machineDisplay3 = machineDisplays3
     Transform.getMutable(machineDisplay3).position.x = skeeGolfMachines[( playerManager.players.get(playerId)!).machineIndex].startingPosition.x +1
     Transform.getMutable(machineDisplay3).position.z = skeeGolfMachines[( playerManager.players.get(playerId)!).machineIndex].startingPosition.z +14.8
@@ -1426,26 +1344,6 @@ Transform.create(bighighscoretext2, {
   
 
 
-
-
-
-
-
-//code to receive price from Devs. Player wins a prize if they score at least 5 points
-function givePrize(){
-
-
-}
-
-
-
-
-
-
-
-
-
-
 //================================================================================================
 //===========================game explain guide===================================================
 export let badgerNPC = npc.create(
@@ -1458,9 +1356,7 @@ export let badgerNPC = npc.create(
   {
       type: npc.NPCType.CUSTOM, 
       model: 'models/badgerNPC.glb', 
-      onActivate: () => {
-          console.log('npc activated')  
-     
+      onActivate: () => { 
     let currentplayer = players.getPlayer()
     let currentplayerId = currentplayer?.userId
     let currentplayerName = currentplayer?.name
@@ -1472,14 +1368,13 @@ export let badgerNPC = npc.create(
     } 
       },
       onWalkAway: () => {
-          console.log('test on walk away function')
       }, 
       faceUser: false,
       reactDistance: 2,
       idleAnim: 'gameguideidle',
       //walkingAnim: 'walk1',
       hoverText: 'Activate',
-      continueOnWalkAway: true,
+      continueOnWalkAway: false,
       onlyClickTrigger: false,
       onlyExternalTrigger: false,
   }
@@ -1489,7 +1384,7 @@ let trashcan = engine.addEntity()
 GltfContainer.create(trashcan, { src: 'models/trashcan.glb' })
 Transform.create(trashcan, {  
   position: Vector3.create(42.9, 1.2, 21), 
-  rotation: Quaternion.fromEulerDegrees(0, 165, 0),
+  rotation: Quaternion.fromEulerDegrees(0, 165+90, 0),
   scale: Vector3.create(1, 1, 1)
 })
 
@@ -1665,9 +1560,7 @@ export let foodstandNPC = npc.create(
   { 
       type: npc.NPCType.CUSTOM, 
       model: 'models/badgerNPC.glb', 
-      onActivate: () => {
-          console.log('npc activated')  
-     
+      onActivate: () => { 
     let currentplayer = players.getPlayer() 
     let currentplayerId = currentplayer?.userId
     let currentplayerName = currentplayer?.name
@@ -1679,18 +1572,17 @@ export let foodstandNPC = npc.create(
     } 
       },
       onWalkAway: () => {
-          console.log('test on walk away function')
       }, 
       faceUser: false,
       reactDistance: 3,
       idleAnim: 'foodstandidle',
       //walkingAnim: 'walk1',
       hoverText: 'Activate',
-      continueOnWalkAway: true,
+      continueOnWalkAway: false,
       onlyClickTrigger: false,
       onlyExternalTrigger: false,
       coolDownDuration: 30000,
-  }
+  } 
 )
 
 export let foodstandDialog = (currentplayerId: string,currentplayerName: string): Dialog[] => [
@@ -1775,7 +1667,6 @@ export let fortuneNPC = npc.create(
       type: npc.NPCType.CUSTOM, 
       model: 'models/fortuneteller.glb', 
       onActivate: () => {
-          console.log('npc activated')  
           playfortunestart()
           npc.playAnimation(fortuneNPC, `fortuneopen`, true, 2)
               npc.changeIdleAnim(fortuneNPC, `fortunecheck`, false)
@@ -1790,8 +1681,6 @@ export let fortuneNPC = npc.create(
     } 
       },
       onWalkAway: () => {
-          console.log('test on walk away function') 
-          
           npc.changeIdleAnim(fortuneNPC, `fortuneidle`, true)
       }, 
       faceUser: false,
@@ -1901,8 +1790,7 @@ export let fortuneNPC2 = npc.create(
   { 
       type: npc.NPCType.CUSTOM, 
       model: 'models/fortuneteller.glb', 
-      onActivate: () => {
-          console.log('npc activated')  
+      onActivate: () => {  
           playfortunestart()
           npc.playAnimation(fortuneNPC2, `fortuneopen`, true, 2)
               npc.changeIdleAnim(fortuneNPC2, `fortunecheck`, false)
@@ -1917,7 +1805,6 @@ export let fortuneNPC2 = npc.create(
     } 
       },
       onWalkAway: () => {
-          console.log('test on walk away function')
           npc.changeIdleAnim(fortuneNPC2, `fortuneidle`, true)
       }, 
       faceUser: false, 
@@ -2000,10 +1887,6 @@ export let frogNPC = npc.create(
       type: npc.NPCType.CUSTOM,  
       model: 'models/frogNPC.glb',  
       onActivate: () => {
-          //console.log('npc activated')  
-          //playfortunestart()
-          //npc.playAnimation(fortuneNPC2, `fortuneopen`, true, 2)
-          //npc.changeIdleAnim(fortuneNPC2, `fortunecheck`, false)
     let currentplayer = players.getPlayer() 
     let currentplayerId = currentplayer?.userId  
     let currentplayerName = currentplayer?.name 
@@ -2015,8 +1898,7 @@ export let frogNPC = npc.create(
     } 
       },
       onWalkAway: () => {  
-          //console.log('test on walk away function')
-          //npc.changeIdleAnim(fortuneNPC2, `fortuneidle`, true)
+
       }, 
       faceUser: false, 
       reactDistance: 4,
@@ -2034,3 +1916,11 @@ export let frogNPC = npc.create(
       playing: true,
       volume: 0.1,
     })
+
+
+   
+//code to receive price from Devs. Player wins a prize if they score at least 50 points
+function givePrize(){
+
+
+}
